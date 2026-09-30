@@ -54,11 +54,11 @@ Nothing else from the repository is needed at runtime, because database migratio
 
 ### 2. Configure
 
-All settings come from environment variables. At startup the server also reads a `.env` file from its working directory (it does not override variables that are already set). Production example:
+All settings come from environment variables. At startup the server also reads a `.env` file from its working directory (it does not override variables that are already set). Production example (on Windows use `DATA_DIR=C:\Udgifter\data`):
 
 ```ini
 BASE_URL=https://udgifter.example.dk
-DATA_DIR=/var/lib/udgifter            # Windows: C:\Udgifter\data
+DATA_DIR=/var/lib/udgifter
 TRUST_PROXY=true
 SESSION_HOURS=12
 RUST_LOG=info,sqlx=warn
@@ -78,6 +78,7 @@ LEPTOS_ENV=PROD
 - `BASE_URL` must be exactly the origin users see in the browser (scheme + host, no trailing slash). Requests that change data are rejected when their `Origin` header doesn't match it.
 - Only set `TRUST_PROXY=true` behind a reverse proxy. The audit log then records the client IP from `X-Forwarded-For` instead of the proxy's address.
 - `LEPTOS_SITE_ROOT` is resolved from the working directory, so run the service from the install folder.
+- Don't put comments on the same line as a value: systemd's `EnvironmentFile` would treat them as part of the value.
 - The file contains the client secret: make it readable only by the service account.
 
 ### 3. Microsoft Entra ID
