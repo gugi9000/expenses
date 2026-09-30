@@ -1,0 +1,137 @@
+[package]
+name = "expenses"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "expenses"
+path = "src/main.rs"
+
+[[bin]]
+name = "create-user"
+path = "src/bin/create-user.rs"
+required-features = ["ssr"]
+
+[dependencies]
+leptos = { version = "0.8" }
+leptos_meta = { version = "0.8" }
+leptos_router = { version = "0.8" }
+serde = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", default-features = false, features = [
+    "serde",
+    "clock",
+    "std",
+] }
+serde_json = "1"
+# Browser APIs; only called from event handlers, so they compile but never run on the server.
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Blob",
+    "CanvasRenderingContext2d",
+    "Document",
+    "File",
+    "FileList",
+    "FormData",
+    "HtmlCanvasElement",
+    "HtmlInputElement",
+    "ImageBitmap",
+    "RequestInit",
+    "Response",
+    "Window",
+] }
+
+# client
+console_error_panic_hook = { version = "0.1", optional = true }
+
+# server
+leptos_axum = { version = "0.8", optional = true }
+axum = { version = "0.8", features = ["multipart"], optional = true }
+axum-extra = { version = "0.10", features = ["cookie"], optional = true }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "net",
+    "fs",
+    "signal",
+], optional = true }
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "sqlite",
+    "migrate",
+    "macros",
+    "chrono",
+], optional = true }
+argon2 = { version = "0.5", optional = true }
+rand = { version = "0.8", optional = true }
+sha2 = { version = "0.10", optional = true }
+time = { version = "0.3", optional = true }
+base64 = { version = "0.22", optional = true }
+openidconnect = { version = "4", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+rpassword = { version = "7", optional = true }
+dotenvy = { version = "0.15", optional = true }
+anyhow = { version = "1", optional = true }
+infer = { version = "0.19", optional = true }
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+], optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+], optional = true }
+
+[features]
+hydrate = ["leptos/hydrate", "dep:console_error_panic_hook"]
+ssr = [
+    "leptos/ssr",
+    "leptos_meta/ssr",
+    "leptos_router/ssr",
+    "dep:leptos_axum",
+    "dep:axum",
+    "dep:axum-extra",
+    "dep:tokio",
+    "dep:sqlx",
+    "dep:argon2",
+    "dep:rand",
+    "dep:sha2",
+    "dep:time",
+    "dep:base64",
+    "dep:openidconnect",
+    "dep:clap",
+    "dep:rpassword",
+    "dep:dotenvy",
+    "dep:anyhow",
+    "dep:infer",
+    "dep:reqwest",
+    "dep:tracing",
+    "dep:tracing-subscriber",
+]
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[package.metadata.leptos]
+output-name = "expenses"
+bin-target = "expenses"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+style-file = "style/main.css"
+assets-dir = "public"
+site-addr = "127.0.0.1:3000"
+reload-port = 3001
+browserquery = "defaults"
+env = "DEV"
+bin-features = ["ssr"]
+bin-default-features = false
+lib-features = ["hydrate"]
+lib-default-features = false
+lib-profile-release = "wasm-release"
