@@ -372,6 +372,20 @@ pub async fn require_user() -> Result<RequestCtx, leptos::prelude::ServerFnError
     Ok(RequestCtx { state, user, ip })
 }
 
+pub async fn require_admin() -> Result<RequestCtx, leptos::prelude::ServerFnError> {
+    let ctx = require_user().await?;
+    if !ctx.user.is_admin() {
+        tracing::warn!(
+            user_id = ctx.user.id,
+            "non-admin called an admin server function"
+        );
+        return Err(leptos::prelude::ServerFnError::new(
+            crate::i18n::t::ERR_FORBIDDEN,
+        ));
+    }
+    Ok(ctx)
+}
+
 pub struct AppError(anyhow::Error);
 
 impl<E: Into<anyhow::Error>> From<E> for AppError {

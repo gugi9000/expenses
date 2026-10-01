@@ -3,16 +3,17 @@ use leptos_router::hooks::{use_navigate, use_params_map, use_query_map};
 
 use crate::{
     api::{
-        ChangeExpenseStatus, DeleteExpense, UpdateExpense, error_text, get_expense, list_categories, list_expenses,
+        ChangeExpenseStatus, DeleteExpense, UpdateExpense, error_text, get_expense,
+        list_categories, list_expenses,
     },
     i18n::{format_amount, format_date, format_number, format_rate, t},
     model::{
-        AttachmentRef, BASE_CURRENCY, CURRENCIES, Category, ExpenseDetail, ExpenseKind, ExpenseListItem,
-        ExpenseStatus,
+        AttachmentRef, BASE_CURRENCY, CURRENCIES, Category, ExpenseDetail, ExpenseKind,
+        ExpenseListItem, ExpenseStatus,
     },
 };
 
-const STATUS_FILTERS: [Option<ExpenseStatus>; 6] = [
+pub const STATUS_FILTERS: [Option<ExpenseStatus>; 6] = [
     None,
     Some(ExpenseStatus::Draft),
     Some(ExpenseStatus::New),
@@ -29,11 +30,18 @@ fn list_href(status: Option<&str>, category: Option<i64>) -> String {
     if let Some(c) = category {
         params.push(format!("kategori={c}"));
     }
-    if params.is_empty() { "/".into() } else { format!("/?{}", params.join("&")) }
+    if params.is_empty() {
+        "/".into()
+    } else {
+        format!("/?{}", params.join("&"))
+    }
 }
 
 #[component]
-pub fn UploadButtons(expense_id: Option<i64>, #[prop(into)] on_done: Callback<i64>) -> impl IntoView {
+pub fn UploadButtons(
+    expense_id: Option<i64>,
+    #[prop(into)] on_done: Callback<i64>,
+) -> impl IntoView {
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
 
@@ -57,7 +65,11 @@ pub fn UploadButtons(expense_id: Option<i64>, #[prop(into)] on_done: Callback<i6
         });
     };
 
-    let camera_label = if expense_id.is_some() { t::ADD_PAGE } else { t::TAKE_PHOTO };
+    let camera_label = if expense_id.is_some() {
+        t::ADD_PAGE
+    } else {
+        t::TAKE_PHOTO
+    };
     view! {
         <div class="upload">
             <div class="upload-buttons">
@@ -95,8 +107,18 @@ pub fn UploadButtons(expense_id: Option<i64>, #[prop(into)] on_done: Callback<i6
 #[component]
 pub fn ExpenseListPage() -> impl IntoView {
     let query = use_query_map();
-    let status = move || query.read().get("status").filter(|s| ExpenseStatus::parse(s).is_some());
-    let category = move || query.read().get("kategori").and_then(|c| c.parse::<i64>().ok());
+    let status = move || {
+        query
+            .read()
+            .get("status")
+            .filter(|s| ExpenseStatus::parse(s).is_some())
+    };
+    let category = move || {
+        query
+            .read()
+            .get("kategori")
+            .and_then(|c| c.parse::<i64>().ok())
+    };
     let expenses = Resource::new(move || (status(), category()), |(s, c)| list_expenses(s, c));
     let categories = Resource::new(|| (), |_| list_categories());
 
@@ -107,7 +129,10 @@ pub fn ExpenseListPage() -> impl IntoView {
     });
     let on_category = move |ev: leptos::ev::Event| {
         let value = event_target_value(&ev);
-        navigate(&list_href(status().as_deref(), value.parse().ok()), Default::default());
+        navigate(
+            &list_href(status().as_deref(), value.parse().ok()),
+            Default::default(),
+        );
     };
 
     view! {
@@ -189,42 +214,62 @@ fn thumbnail(att: Option<AttachmentRef>) -> impl IntoView {
     }
 }
 
-fn status_badge(status: ExpenseStatus) -> impl IntoView {
+pub fn status_badge(status: ExpenseStatus) -> impl IntoView {
     view! { <span class=format!("status status-{}", status.as_str())>{status.label()}</span> }
 }
 
-#[component]
-fn ExpenseCard(item: ExpenseListItem) -> impl IntoView {
-    let title = item.vendor.clone().unwrap_or_else(|| item.kind.label().to_string());
-    let amount = item.amount_minor.zip(item.currency.clone()).map(|(a, c)| format_amount(a, &c));
+/// Thumbnail and details of a voucher, used inside list links and selection rows.
+pub fn expense_card_body(item: ExpenseListItem, show_owner: bool) -> impl IntoView {
+    let owner = show_owner.then(|| {
+        let deleted = item.deleted.then(|| format!(" · {}", t::DELETED));
+        view! { <div class="line owner small"><span>{item.owner_name.clone()}{deleted}</span></div> }
+    });
+    let title = item
+        .vendor
+        .clone()
+        .unwrap_or_else(|| item.kind.label().to_string());
+    let amount = item
+        .amount_minor
+        .zip(item.currency.clone())
+        .map(|(a, c)| format_amount(a, &c));
     let base = (item.currency.as_deref() != Some(BASE_CURRENCY))
         .then_some(item.amount_base_minor)
         .flatten()
         .map(|b| format!("≈ {}", format_amount(b, BASE_CURRENCY)));
     let date = item.expense_date.map(format_date);
-    let pages = (item.attachment_count > 1).then(|| format!("{} {}", item.attachment_count, t::PAGES));
+    let pages =
+        (item.attachment_count > 1).then(|| format!("{} {}", item.attachment_count, t::PAGES));
 
     view! {
+        <div class="thumb">{thumbnail(item.thumbnail)}</div>
+        <div class="info">
+            {owner}
+            <div class="line">
+                <strong class="title">{title}</strong>
+                <span class="amount">{amount}</span>
+            </div>
+            <div class="line muted">
+                <span>{date.unwrap_or_else(|| t::MISSING_DETAILS.to_string())}</span>
+                <span class="small">{base}</span>
+            </div>
+            <div class="line">
+                <span class="muted small">
+                    {item.category}
+                    {pages.map(|p| format!(" · {p}"))}
+                </span>
+                {status_badge(item.status)}
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn ExpenseCard(item: ExpenseListItem) -> impl IntoView {
+    let href = format!("/bilag/{}", item.id);
+    view! {
         <li>
-            <a class="expense-card" href=format!("/bilag/{}", item.id)>
-                <div class="thumb">{thumbnail(item.thumbnail)}</div>
-                <div class="info">
-                    <div class="line">
-                        <strong class="title">{title}</strong>
-                        <span class="amount">{amount}</span>
-                    </div>
-                    <div class="line muted">
-                        <span>{date.unwrap_or_else(|| t::MISSING_DETAILS.to_string())}</span>
-                        <span class="small">{base}</span>
-                    </div>
-                    <div class="line">
-                        <span class="muted small">
-                            {item.category}
-                            {pages.map(|p| format!(" · {p}"))}
-                        </span>
-                        {status_badge(item.status)}
-                    </div>
-                </div>
+            <a class="expense-card" href=href>
+                {expense_card_body(item, false)}
             </a>
         </li>
     }
@@ -233,7 +278,13 @@ fn ExpenseCard(item: ExpenseListItem) -> impl IntoView {
 #[component]
 pub fn ExpenseDetailPage() -> impl IntoView {
     let params = use_params_map();
-    let id = move || params.read().get("id").and_then(|s| s.parse::<i64>().ok()).unwrap_or_default();
+    let id = move || {
+        params
+            .read()
+            .get("id")
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or_default()
+    };
 
     let update = ServerAction::<UpdateExpense>::new();
     let status_action = ServerAction::<ChangeExpenseStatus>::new();
@@ -242,7 +293,8 @@ pub fn ExpenseDetailPage() -> impl IntoView {
     // Only refetch after successful changes, so a failed save keeps the user's input on screen.
     let refresh = RwSignal::new(0u32);
     Effect::new(move |_| {
-        let ok = matches!(update.value().get(), Some(Ok(()))) || matches!(status_action.value().get(), Some(Ok(())));
+        let ok = matches!(update.value().get(), Some(Ok(())))
+            || matches!(status_action.value().get(), Some(Ok(())));
         if ok {
             refresh.update(|n| *n += 1);
         }
@@ -285,7 +337,7 @@ pub fn ExpenseDetailPage() -> impl IntoView {
     }
 }
 
-fn attachment_view(a: AttachmentRef) -> impl IntoView {
+pub fn attachment_view(a: AttachmentRef) -> impl IntoView {
     let url = a.url();
     if a.is_image() {
         let href = url.clone();
@@ -294,7 +346,7 @@ fn attachment_view(a: AttachmentRef) -> impl IntoView {
                 <img src=url alt="" />
             </a>
         }
-            .into_any()
+        .into_any()
     } else {
         let name = a.original_name.unwrap_or_else(|| t::PDF.to_string());
         view! {
@@ -303,7 +355,7 @@ fn attachment_view(a: AttachmentRef) -> impl IntoView {
                 <span>{t::OPEN_FILE}": "{name}</span>
             </a>
         }
-            .into_any()
+        .into_any()
     }
 }
 
@@ -319,11 +371,25 @@ fn ExpenseEditor(
     let id = expense.id;
     let status = expense.status;
     let editable = status.is_editable();
-    let currency = expense.currency.clone().unwrap_or_else(|| BASE_CURRENCY.to_string());
-    let amount = expense.amount_minor.map(|a| format_number(a, &currency)).unwrap_or_default();
-    let date = expense.expense_date.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default();
+    let currency = expense
+        .currency
+        .clone()
+        .unwrap_or_else(|| BASE_CURRENCY.to_string());
+    let amount = expense
+        .amount_minor
+        .map(|a| format_number(a, &currency))
+        .unwrap_or_default();
+    let date = expense
+        .expense_date
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_default();
     let converted = (currency != BASE_CURRENCY)
-        .then(|| expense.amount_base_minor.zip(expense.fx_rate.clone()).zip(expense.fx_rate_date))
+        .then(|| {
+            expense
+                .amount_base_minor
+                .zip(expense.fx_rate.clone())
+                .zip(expense.fx_rate_date)
+        })
         .flatten()
         .map(|((base, rate), rate_date)| {
             format!(
@@ -346,7 +412,9 @@ fn ExpenseEditor(
         }
     };
     let on_delete = move |_| {
-        let confirmed = web_sys::window().and_then(|w| w.confirm_with_message(t::CONFIRM_DELETE).ok()).unwrap_or(false);
+        let confirmed = web_sys::window()
+            .and_then(|w| w.confirm_with_message(t::CONFIRM_DELETE).ok())
+            .unwrap_or(false);
         if confirmed {
             delete.dispatch(DeleteExpense { id });
         }

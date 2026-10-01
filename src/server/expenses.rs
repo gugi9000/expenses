@@ -313,6 +313,8 @@ pub async fn categories(pool: &SqlitePool) -> sqlx::Result<Vec<Category>> {
 #[derive(FromRow)]
 struct ListRow {
     id: i64,
+    owner_name: String,
+    deleted: bool,
     kind: String,
     status: String,
     vendor: Option<String>,
@@ -333,14 +335,37 @@ pub async fn list(
     status: Option<ExpenseStatus>,
     category_id: Option<i64>,
 ) -> sqlx::Result<Vec<ExpenseListItem>> {
+    list_scoped(pool, Some(owner_id), false, status, category_id).await
+}
+
+/// Admin view across all users, including deleted expenses.
+pub async fn list_all(
+    pool: &SqlitePool,
+    owner_filter: Option<i64>,
+    status: Option<ExpenseStatus>,
+) -> sqlx::Result<Vec<ExpenseListItem>> {
+    list_scoped(pool, owner_filter, true, status, None).await
+}
+
+async fn list_scoped(
+    pool: &SqlitePool,
+    owner_id: Option<i64>,
+    include_deleted: bool,
+    status: Option<ExpenseStatus>,
+    category_id: Option<i64>,
+) -> sqlx::Result<Vec<ExpenseListItem>> {
     let rows: Vec<ListRow> = sqlx::query_as(
-        "SELECT e.id, e.kind, e.status, e.vendor, e.description, c.name_da AS category,
+        "SELECT e.id, u.display_name AS owner_name, e.deleted_at IS NOT NULL AS deleted,
+                e.kind, e.status, e.vendor, e.description, c.name_da AS category,
                 e.expense_date, e.amount_minor, e.currency, e.amount_base_minor,
                 (SELECT a.id FROM attachments a WHERE a.expense_id = e.id ORDER BY a.page_order, a.id LIMIT 1) AS thumb_id,
                 (SELECT a.mime FROM attachments a WHERE a.expense_id = e.id ORDER BY a.page_order, a.id LIMIT 1) AS thumb_mime,
                 (SELECT COUNT(*) FROM attachments a WHERE a.expense_id = e.id) AS attachment_count
-         FROM expenses e LEFT JOIN expense_categories c ON c.id = e.category_id
-         WHERE e.owner_id = ?1 AND e.deleted_at IS NULL
+         FROM expenses e
+         JOIN users u ON u.id = e.owner_id
+         LEFT JOIN expense_categories c ON c.id = e.category_id
+         WHERE (?1 IS NULL OR e.owner_id = ?1)
+           AND (?4 OR e.deleted_at IS NULL)
            AND (?2 IS NULL OR e.status = ?2)
            AND (?3 IS NULL OR e.category_id = ?3)
          ORDER BY COALESCE(e.expense_date, substr(e.created_at, 1, 10)) DESC, e.id DESC
@@ -349,6 +374,7 @@ pub async fn list(
     .bind(owner_id)
     .bind(status.map(|s| s.as_str()))
     .bind(category_id)
+    .bind(include_deleted)
     .fetch_all(pool)
     .await?;
 
@@ -356,6 +382,8 @@ pub async fn list(
         .into_iter()
         .map(|r| ExpenseListItem {
             id: r.id,
+            owner_name: r.owner_name,
+            deleted: r.deleted,
             kind: ExpenseKind::parse(&r.kind).unwrap_or(ExpenseKind::Receipt),
             status: ExpenseStatus::parse(&r.status).unwrap_or(ExpenseStatus::Draft),
             vendor: r.vendor,
@@ -381,6 +409,9 @@ pub async fn list(
 #[derive(FromRow)]
 struct DetailRow {
     id: i64,
+    owner_id: i64,
+    owner_name: String,
+    deleted: bool,
     kind: String,
     status: String,
     category_id: Option<i64>,
@@ -399,10 +430,25 @@ pub async fn detail(
     owner_id: i64,
     id: i64,
 ) -> sqlx::Result<Option<ExpenseDetail>> {
+    detail_scoped(pool, Some(owner_id), id).await
+}
+
+/// Admin view of any expense, including deleted ones.
+pub async fn detail_any(pool: &SqlitePool, id: i64) -> sqlx::Result<Option<ExpenseDetail>> {
+    detail_scoped(pool, None, id).await
+}
+
+async fn detail_scoped(
+    pool: &SqlitePool,
+    owner_id: Option<i64>,
+    id: i64,
+) -> sqlx::Result<Option<ExpenseDetail>> {
     let Some(r): Option<DetailRow> = sqlx::query_as(
-        "SELECT id, kind, status, category_id, vendor, description, expense_date, amount_minor,
-                currency, fx_rate, fx_rate_date, amount_base_minor
-         FROM expenses WHERE id = ? AND owner_id = ? AND deleted_at IS NULL",
+        "SELECT e.id, e.owner_id, u.display_name AS owner_name, e.deleted_at IS NOT NULL AS deleted,
+                e.kind, e.status, e.category_id, e.vendor, e.description, e.expense_date, e.amount_minor,
+                e.currency, e.fx_rate, e.fx_rate_date, e.amount_base_minor
+         FROM expenses e JOIN users u ON u.id = e.owner_id
+         WHERE e.id = ?1 AND (?2 IS NULL OR (e.owner_id = ?2 AND e.deleted_at IS NULL))",
     )
     .bind(id)
     .bind(owner_id)
@@ -427,12 +473,14 @@ pub async fn detail(
          ORDER BY e2.id",
     )
     .bind(id)
-    .bind(owner_id)
+    .bind(r.owner_id)
     .fetch_all(pool)
     .await?;
 
     Ok(Some(ExpenseDetail {
         id: r.id,
+        owner_name: r.owner_name,
+        deleted: r.deleted,
         kind: ExpenseKind::parse(&r.kind).unwrap_or(ExpenseKind::Receipt),
         status: ExpenseStatus::parse(&r.status).unwrap_or(ExpenseStatus::Draft),
         category_id: r.category_id,
@@ -962,6 +1010,27 @@ mod tests {
         );
         let r = change_status(&pool, &alice, id, ExpenseStatus::New, None).await;
         assert_eq!(user_err(r), t::ERR_STATUS_CHANGE);
+    }
+
+    #[tokio::test]
+    async fn admin_queries_see_everything_user_queries_do_not() {
+        let pool = test_pool().await;
+        let (alice, bob) = (add_user(&pool, "alice").await, add_user(&pool, "bob").await);
+        let a = add_expense(&pool, &alice).await;
+        let b = add_expense(&pool, &bob).await;
+        delete(&pool, &bob, b, None).await.ok().unwrap();
+
+        let all = list_all(&pool, None, None).await.unwrap();
+        assert_eq!(all.len(), 2);
+        assert!(all.iter().any(|e| e.id == b && e.deleted && e.owner_name == "bob"));
+        assert_eq!(list_all(&pool, Some(alice.id), None).await.unwrap().len(), 1);
+
+        let d = detail_any(&pool, b).await.unwrap().unwrap();
+        assert!(d.deleted);
+        assert_eq!(d.owner_name, "bob");
+        assert!(detail(&pool, bob.id, b).await.unwrap().is_none());
+        assert!(detail(&pool, bob.id, a).await.unwrap().is_none());
+        assert!(list(&pool, alice.id, None, None).await.unwrap().iter().all(|e| !e.deleted));
     }
 
     #[tokio::test]

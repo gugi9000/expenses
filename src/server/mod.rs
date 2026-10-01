@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod audit;
 pub mod auth;
 pub mod config;
@@ -7,6 +8,8 @@ pub mod expenses;
 pub mod files;
 pub mod fx;
 pub mod ocr;
+pub mod pdf;
 pub mod security;
 pub mod session;
+pub mod sheets;
 pub mod state;

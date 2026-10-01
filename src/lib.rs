@@ -1,3 +1,4 @@
+pub mod admin_pages;
 pub mod api;
 pub mod app;
 pub mod i18n;
@@ -5,6 +6,7 @@ pub mod model;
 pub mod pages;
 #[cfg(feature = "ssr")]
 pub mod server;
+pub mod sheet_pages;
 pub mod upload;
 
 #[cfg(feature = "hydrate")]

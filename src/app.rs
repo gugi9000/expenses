@@ -7,9 +7,14 @@ use leptos_router::{
 };
 
 use crate::{
+    admin_pages::{
+        AdminExpensePage, AdminExpensesPage, AdminLayout, AdminLogPage, AdminSheetPage, AdminSheetsPage,
+        AdminUsersPage,
+    },
     i18n::t,
     model::SessionUser,
     pages::{ExpenseDetailPage, ExpenseListPage},
+    sheet_pages::{NewSheetPage, SheetDetailPage, SheetListPage},
 };
 
 #[server]
@@ -19,7 +24,9 @@ pub async fn get_session_user() -> Result<Option<SessionUser>, ServerFnError> {
 
 #[server]
 pub async fn entra_enabled() -> Result<bool, ServerFnError> {
-    Ok(expect_context::<crate::server::state::AppState>().entra.is_some())
+    Ok(expect_context::<crate::server::state::AppState>()
+        .entra
+        .is_some())
 }
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
@@ -54,6 +61,17 @@ pub fn App() -> impl IntoView {
                 <ParentRoute path=StaticSegment("") view=AuthedLayout>
                     <Route path=StaticSegment("") view=ExpenseListPage />
                     <Route path=(StaticSegment("bilag"), ParamSegment("id")) view=ExpenseDetailPage />
+                    <Route path=StaticSegment("afregninger") view=SheetListPage />
+                    <Route path=(StaticSegment("afregninger"), StaticSegment("ny")) view=NewSheetPage />
+                    <Route path=(StaticSegment("afregninger"), ParamSegment("id")) view=SheetDetailPage />
+                    <ParentRoute path=StaticSegment("admin") view=AdminLayout>
+                        <Route path=StaticSegment("") view=AdminExpensesPage />
+                        <Route path=(StaticSegment("bilag"), ParamSegment("id")) view=AdminExpensePage />
+                        <Route path=StaticSegment("afregninger") view=AdminSheetsPage />
+                        <Route path=(StaticSegment("afregninger"), ParamSegment("id")) view=AdminSheetPage />
+                        <Route path=StaticSegment("brugere") view=AdminUsersPage />
+                        <Route path=StaticSegment("log") view=AdminLogPage />
+                    </ParentRoute>
                 </ParentRoute>
             </Routes>
         </Router>
@@ -148,11 +166,19 @@ fn Header(user: SessionUser) -> impl IntoView {
             <A href="/" attr:class="brand">{t::APP_NAME}</A>
             <nav>
                 <A href="/">{t::NAV_EXPENSES}</A>
-                {is_admin.then(|| view! { <span class="badge">{t::ROLE_ADMIN}</span> })}
+                <A href="/afregninger">{t::NAV_SHEETS}</A>
+                {is_admin.then(|| view! { <A href="/admin">{t::NAV_ADMIN}</A> })}
             </nav>
-            <form method="post" action="/auth/logout">
-                <button class="link" type="submit" title=user.display_name.clone()>{t::LOGOUT}</button>
-            </form>
         </header>
+        <div class="userbar">
+            <span class="who">
+                <span class="visually-hidden">{t::LOGGED_IN_AS}" "</span>
+                <strong>{user.display_name}</strong>
+            </span>
+            {is_admin.then(|| view! { <span class="badge">{t::ROLE_ADMIN}</span> })}
+            <form method="post" action="/auth/logout">
+                <button class="link" type="submit">{t::LOGOUT}</button>
+            </form>
+        </div>
     }
 }

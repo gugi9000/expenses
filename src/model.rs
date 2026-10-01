@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -146,6 +146,21 @@ pub enum SheetStatus {
 }
 
 impl SheetStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SheetStatus::Active => "active",
+            SheetStatus::Voided => "voided",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "active" => Some(SheetStatus::Active),
+            "voided" => Some(SheetStatus::Voided),
+            _ => None,
+        }
+    }
+
     pub fn label(self) -> &'static str {
         use crate::i18n::t;
         match self {
@@ -193,6 +208,9 @@ impl AttachmentRef {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExpenseListItem {
     pub id: i64,
+    pub owner_name: String,
+    /// Only ever true in the admin view; users never see their deleted expenses.
+    pub deleted: bool,
     pub kind: ExpenseKind,
     pub status: ExpenseStatus,
     pub vendor: Option<String>,
@@ -209,6 +227,8 @@ pub struct ExpenseListItem {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExpenseDetail {
     pub id: i64,
+    pub owner_name: String,
+    pub deleted: bool,
     pub kind: ExpenseKind,
     pub status: ExpenseStatus,
     pub category_id: Option<i64>,
@@ -228,6 +248,97 @@ pub struct ExpenseDetail {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UploadResponse {
     pub expense_id: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SheetSummary {
+    pub id: i64,
+    pub owner_name: String,
+    pub title: String,
+    pub status: SheetStatus,
+    pub created_at: DateTime<Utc>,
+    pub item_count: i64,
+    pub total_base_minor: i64,
+}
+
+/// A snapshot of an expense as it was when the sheet was created.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SheetItem {
+    pub position: usize,
+    pub expense_id: i64,
+    pub kind: ExpenseKind,
+    pub category: Option<String>,
+    pub vendor: Option<String>,
+    pub description: Option<String>,
+    pub expense_date: NaiveDate,
+    pub amount_minor: i64,
+    pub currency: String,
+    pub fx_rate: String,
+    pub amount_base_minor: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SheetDetail {
+    pub summary: SheetSummary,
+    pub owner_name: String,
+    pub bank_account: Option<String>,
+    pub items: Vec<SheetItem>,
+}
+
+impl SheetDetail {
+    pub fn pdf_url(&self) -> String {
+        format!("/afregninger/{}/pdf", self.summary.id)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SheetDefaults {
+    pub title: String,
+    pub bank_account: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdminUser {
+    pub id: i64,
+    pub display_name: String,
+    pub username: String,
+    pub email: Option<String>,
+    pub provider: String,
+    pub role: Role,
+    pub disabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub last_login_at: Option<DateTime<Utc>>,
+    pub expense_count: i64,
+    pub sheet_count: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuditEntry {
+    pub id: i64,
+    pub at: DateTime<Utc>,
+    pub actor_id: Option<i64>,
+    pub actor_name: Option<String>,
+    pub action: String,
+    pub entity_type: Option<String>,
+    pub entity_id: Option<String>,
+    pub details: Option<String>,
+    pub ip: Option<String>,
+}
+
+/// Totals per category, largest first, for sheet summaries.
+pub fn totals_by_category<'a>(
+    items: impl IntoIterator<Item = (Option<&'a str>, i64)>,
+) -> Vec<(String, i64)> {
+    let mut totals: Vec<(String, i64)> = Vec::new();
+    for (category, amount) in items {
+        let name = category.unwrap_or("–");
+        match totals.iter_mut().find(|(n, _)| n == name) {
+            Some((_, sum)) => *sum += amount,
+            None => totals.push((name.to_string(), amount)),
+        }
+    }
+    totals.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    totals
 }
 
 #[cfg(test)]

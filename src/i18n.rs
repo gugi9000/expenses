@@ -1,6 +1,6 @@
 //! Danish UI text and da-DK formatting. Strings are constants so a missing key is a compile error.
 
-use chrono::NaiveDate;
+use chrono::{DateTime, Datelike, Days, Duration, NaiveDate, NaiveDateTime, Utc};
 
 pub mod t {
     pub const APP_NAME: &str = "Udgifter";
@@ -19,6 +19,7 @@ pub mod t {
     pub const LOGIN_ENTRA_FAILED: &str = "Log ind med Microsoft mislykkedes. Prøv igen.";
     pub const LOGIN_DISABLED: &str = "Din bruger er deaktiveret.";
     pub const LOGOUT: &str = "Log ud";
+    pub const LOGGED_IN_AS: &str = "Logget ind som";
     pub const OR: &str = "eller";
 
     pub const GREETING: &str = "Hej";
@@ -101,6 +102,106 @@ pub mod t {
     pub const ERR_FILE_TOO_LARGE: &str = "Filen er for stor (maks. 20 MB).";
     pub const ERR_NO_FILES: &str = "Vælg mindst én fil.";
     pub const ERR_TOO_MANY_FILES: &str = "For mange filer på én gang (maks. 10).";
+
+    pub const MY_SHEETS: &str = "Mine afregninger";
+    pub const NEW_SHEET: &str = "Ny afregning";
+    pub const SHEET_TITLE: &str = "Titel";
+    pub const SELECT_ALL: &str = "Vælg alle";
+    pub const SELECT_NONE: &str = "Fravælg alle";
+    pub const SELECTED: &str = "valgt";
+    pub const CREATE_SHEET: &str = "Opret afregning";
+    pub const CREATING: &str = "Opretter …";
+    pub const NO_NEW_EXPENSES: &str = "Du har ingen nye bilag at afregne. Et bilag skal have udgiftstype, dato og beløb for at kunne bruges.";
+    pub const NO_SHEETS: &str = "Du har ingen afregninger endnu.";
+    pub const DOWNLOAD_PDF: &str = "Hent PDF";
+    pub const VOID_SHEET: &str = "Annullér afregning";
+    pub const CONFIRM_VOID: &str =
+        "Annullér afregningen? Bilagene bliver frigivet og kan bruges igen.";
+    pub const SHEET_VOIDED_NOTICE: &str =
+        "Afregningen er annulleret, og bilagene er frigivet. PDF'en er gemt til dokumentation.";
+    pub const SHEET_NOT_FOUND: &str = "Afregningen findes ikke.";
+    pub const ITEMS: &str = "bilag";
+    pub const CREATED: &str = "Oprettet";
+    pub const ERR_SHEET_EMPTY: &str = "Vælg mindst ét bilag.";
+    pub const ERR_SHEET_STALE: &str =
+        "Et eller flere bilag kan ikke længere bruges. Genindlæs siden, og prøv igen.";
+    pub const ERR_SHEET_NOT_ACTIVE: &str = "Afregningen er allerede annulleret.";
+    pub const ERR_TITLE_TOO_LONG: &str = "Titlen er for lang (maks. 120 tegn).";
+    pub const BANK_ACCOUNT: &str = "Kontonummer";
+    pub const BANK_ACCOUNT_HINT: &str =
+        "Reg.nr. og kontonr. (eller IBAN) til udbetaling. Huskes til næste afregning.";
+    pub const BANK_ACCOUNT_PLACEHOLDER: &str = "fx 1234 0001234567";
+    pub const ERR_BANK_ACCOUNT: &str =
+        "Ugyldigt kontonummer. Skriv reg.nr. og kontonr., fx 1234 0001234567, eller et IBAN.";
+
+    pub const PDF_NAME: &str = "Navn";
+    pub const PDF_SHEET_NO: &str = "Afregning nr.";
+    pub const PDF_COUNT: &str = "Antal bilag";
+    pub const PDF_FX_NOTE: &str =
+        "Udenlandske beløb er omregnet til DKK med ECB's referencekurs på bilagsdatoen.";
+    pub const PDF_VOIDED: &str = "ANNULLERET";
+    pub const COL_NO: &str = "Nr.";
+    pub const COL_DATE: &str = "Dato";
+    pub const COL_CATEGORY: &str = "Udgiftstype";
+    pub const COL_VENDOR: &str = "Forretning / beskrivelse";
+    pub const COL_ORIGINAL: &str = "Originalbeløb";
+    pub const COL_BASE: &str = "Beløb (DKK)";
+    pub const BY_CATEGORY: &str = "Fordelt på udgiftstype";
+    pub const TOTAL: &str = "I alt";
+    pub const SIGN_EMPLOYEE: &str = "Medarbejder (dato og underskrift)";
+    pub const SIGN_APPROVER: &str = "Godkendt af (dato og underskrift)";
+    pub const PAGE: &str = "side";
+    pub const OF: &str = "af";
+    pub const PDF_HEIC_PLACEHOLDER: &str =
+        "Billedet er i HEIC-format og kan ikke vises i PDF'en. Originalen er gemt i systemet.";
+    pub const PDF_BROKEN_PLACEHOLDER: &str =
+        "Filen kunne ikke indlejres i PDF'en. Originalen er gemt i systemet.";
+
+    pub const ERR_FORBIDDEN: &str = "Du har ikke adgang til denne side.";
+    pub const ADMIN_TITLE: &str = "Administration";
+    pub const ADMIN_READ_ONLY: &str = "Du ser alle brugeres data. Visningen er skrivebeskyttet, og åbnede bilag og afregninger bliver logget.";
+    pub const ADMIN_TAB_EXPENSES: &str = "Bilag";
+    pub const ADMIN_TAB_SHEETS: &str = "Afregninger";
+    pub const ADMIN_TAB_USERS: &str = "Brugere";
+    pub const ADMIN_TAB_LOG: &str = "Log";
+    pub const ALL_USERS: &str = "Alle brugere";
+    pub const OWNER: &str = "Ejer";
+    pub const DELETED: &str = "Slettet";
+    pub const PROVIDER_ENTRA: &str = "Microsoft";
+    pub const PROVIDER_LOCAL: &str = "Lokal";
+    pub const LAST_LOGIN: &str = "Seneste login";
+    pub const NEVER: &str = "aldrig";
+    pub const USER_DISABLED: &str = "Deaktiveret";
+    pub const SHOW_OLDER: &str = "Vis ældre";
+    pub const NO_LOG_ENTRIES: &str = "Ingen hændelser.";
+    pub const NO_USERS: &str = "Ingen brugere.";
+    pub const SYSTEM: &str = "System";
+    pub const NOT_SET: &str = "–";
+    pub const LOG_FOR_USER: &str = "Log";
+}
+
+/// Danish label for an audit log action; unknown actions are shown as-is.
+pub fn audit_action_label(action: &str) -> &str {
+    match action {
+        "login" => "Logget ind",
+        "login_failed" => "Mislykket login",
+        "login_denied_disabled" => "Login afvist (deaktiveret)",
+        "logout" => "Logget ud",
+        "user_created" => "Bruger oprettet",
+        "user_bank_account_changed" => "Kontonummer ændret",
+        "expense_created" => "Bilag oprettet",
+        "attachment_added" => "Side tilføjet",
+        "expense_updated" => "Bilag ændret",
+        "expense_status_changed" => "Status ændret",
+        "expense_deleted" => "Bilag slettet",
+        "sheet_created" => "Afregning oprettet",
+        "sheet_voided" => "Afregning annulleret",
+        "sheet_pdf_stored" => "PDF gemt",
+        "sheet_pdf_downloaded" => "PDF hentet",
+        "admin_viewed_expense" => "Administrator åbnede bilag",
+        "admin_viewed_sheet" => "Administrator åbnede afregning",
+        other => other,
+    }
 }
 
 /// Number of decimals used for amounts in the given ISO 4217 currency.
@@ -159,6 +260,40 @@ pub fn format_rate(rate: &str) -> String {
 
 pub fn format_date(date: NaiveDate) -> String {
     date.format("%d.%m.%Y").to_string()
+}
+
+fn last_sunday(year: i32, month: u32) -> NaiveDate {
+    let first_of_next = if month == 12 {
+        NaiveDate::from_ymd_opt(year + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(year, month + 1, 1)
+    }
+    .expect("valid date");
+    let last = first_of_next - Days::new(1);
+    last - Days::new(last.weekday().num_days_from_sunday() as u64)
+}
+
+/// Danish local time (CET/CEST, EU summer-time rule); identical on server and in the browser.
+pub fn copenhagen_time(t: DateTime<Utc>) -> NaiveDateTime {
+    let utc = t.naive_utc();
+    let year = utc.year();
+    let dst_start = last_sunday(year, 3)
+        .and_hms_opt(1, 0, 0)
+        .expect("valid time");
+    let dst_end = last_sunday(year, 10)
+        .and_hms_opt(1, 0, 0)
+        .expect("valid time");
+    let offset = if utc >= dst_start && utc < dst_end {
+        2
+    } else {
+        1
+    };
+    utc + Duration::hours(offset)
+}
+
+/// E.g. `30.09.2026 kl. 14.05` in Danish time.
+pub fn format_datetime(t: DateTime<Utc>) -> String {
+    copenhagen_time(t).format("%d.%m.%Y kl. %H.%M").to_string()
 }
 
 /// Parses a user-entered positive amount (`1.234,56`, `1234,5`, `12.50`, `1 234`) into minor units.
@@ -246,9 +381,42 @@ mod tests {
     }
 
     #[test]
+    fn formats_datetime_in_danish_time() {
+        let utc = |s: &str| s.parse::<DateTime<Utc>>().unwrap();
+        assert_eq!(
+            format_datetime(utc("2026-09-30T12:05:00Z")),
+            "30.09.2026 kl. 14.05"
+        );
+        assert_eq!(
+            format_datetime(utc("2026-12-31T23:30:00Z")),
+            "01.01.2027 kl. 00.30"
+        );
+        // 2026 summer time: 29 March 01:00 UTC to 25 October 01:00 UTC.
+        assert_eq!(
+            format_datetime(utc("2026-03-29T00:59:00Z")),
+            "29.03.2026 kl. 01.59"
+        );
+        assert_eq!(
+            format_datetime(utc("2026-03-29T01:00:00Z")),
+            "29.03.2026 kl. 03.00"
+        );
+        assert_eq!(
+            format_datetime(utc("2026-10-25T00:59:00Z")),
+            "25.10.2026 kl. 02.59"
+        );
+        assert_eq!(
+            format_datetime(utc("2026-10-25T01:00:00Z")),
+            "25.10.2026 kl. 02.00"
+        );
+    }
+
+    #[test]
     fn formats_numbers_and_rates() {
         assert_eq!(format_number(123456, "DKK"), "1.234,56");
-        assert_eq!(parse_amount(&format_number(123456, "DKK"), "DKK"), Some(123456));
+        assert_eq!(
+            parse_amount(&format_number(123456, "DKK"), "DKK"),
+            Some(123456)
+        );
         assert_eq!(format_rate("7.460400"), "7,4604");
         assert_eq!(format_rate("1.000000"), "1,00");
         assert_eq!(format_rate("0.046590"), "0,04659");

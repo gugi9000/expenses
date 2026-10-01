@@ -11,7 +11,8 @@ async fn main() -> anyhow::Result<()> {
         app::{App, shell},
         server::{
             auth, config::Config, db, entra::Entra, expenses::routes as expense_routes,
-            files::FileStore, fx, ocr::NoopOcr, security, session, state::AppState,
+            files::FileStore, fx, ocr::NoopOcr, security, session, sheets::routes as sheet_routes,
+            state::AppState,
         },
     };
     use leptos::prelude::*;
@@ -71,6 +72,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/{*fn_name}", post(server_fn_handler))
         .merge(auth::routes())
         .merge(expense_routes())
+        .merge(sheet_routes())
         .leptos_routes_with_context(
             &state,
             routes,
