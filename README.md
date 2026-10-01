@@ -215,6 +215,8 @@ Don't back up the live `expenses.db` by copying the file while the service is ru
 3. Replace the binaries and the **whole** `site/` folder, because the WASM bundle must match the server binary.
 4. Start the service. Database migrations run automatically at startup.
 
+Browsers check `/pkg/*` with the server on every page load (`Cache-Control: no-cache` plus 304 responses), so a deploy takes effect at once. If a browser still shows `LinkError: import object field '__wbindgen_…'` in the console, it has JS and WASM from different builds: make sure `site/` and the binary come from the same build, then hard-refresh.
+
 Take a backup first if the release contains a new file in `migrations/`.
 
 ### Checklist after deploy

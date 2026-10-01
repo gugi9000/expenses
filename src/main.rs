@@ -4,7 +4,12 @@ async fn main() -> anyhow::Result<()> {
     use std::{net::SocketAddr, sync::Arc, time::Duration};
 
     use axum::{
-        Router, body::Body, extract::State, http::Request, middleware, response::IntoResponse,
+        Router,
+        body::Body,
+        extract::State,
+        http::{HeaderValue, Request, header},
+        middleware,
+        response::{IntoResponse, Response},
         routing::post,
     };
     use expenses::{
@@ -67,8 +72,24 @@ async fn main() -> anyhow::Result<()> {
         handle_server_fns_with_context(move || provide_context(state.clone()), req).await
     }
 
+    // JS/WASM/CSS keep the same names across deploys, so browsers must revalidate them;
+    // a stale expenses.js paired with a new expenses.wasm breaks hydration.
+    async fn revalidate_assets(req: Request<Body>, next: middleware::Next) -> Response {
+        let is_asset = req.uri().path().starts_with("/pkg/");
+        let mut res = next.run(req).await;
+        if is_asset {
+            res.headers_mut()
+                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+        }
+        res
+    }
+
     let routes = generate_route_list(App);
+    // Leptos' fallback file handler ignores If-Modified-Since, so serve the bundle with ServeDir to get 304s.
+    let pkg_dir = std::path::Path::new(&*state.leptos_options.site_root)
+        .join(&*state.leptos_options.site_pkg_dir);
     let app = Router::new()
+        .nest_service("/pkg", tower_http::services::ServeDir::new(pkg_dir))
         .route("/api/{*fn_name}", post(server_fn_handler))
         .merge(auth::routes())
         .merge(expense_routes())
@@ -99,6 +120,7 @@ async fn main() -> anyhow::Result<()> {
             state.clone(),
             security::require_same_origin,
         ))
+        .layer(middleware::from_fn(revalidate_assets))
         .with_state(state);
 
     tracing::info!("listening on http://{addr}");

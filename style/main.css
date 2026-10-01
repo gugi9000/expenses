@@ -83,7 +83,7 @@ h2 { font-size: 1.1rem; margin: 0 0 .75rem; }
 }
 
 label { display: block; margin-bottom: .75rem; font-weight: 500; }
-input, select, textarea {
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
   display: block;
   width: 100%;
   min-height: var(--tap);
