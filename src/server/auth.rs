@@ -337,7 +337,7 @@ impl FromRequestParts<AppState> for CurrentUser {
 /// Resolves the logged-in user inside a Leptos server function.
 pub async fn session_user() -> Result<Option<SessionUser>, leptos::prelude::ServerFnError> {
     use leptos::prelude::*;
-    let state = expect_context::<AppState>();
+    let state = app_state()?;
     let jar: CookieJar = leptos_axum::extract().await?;
     let Some(token) = jar.get(session::COOKIE_NAME) else {
         return Ok(None);
@@ -357,12 +357,20 @@ pub struct RequestCtx {
     pub ip: Option<String>,
 }
 
+/// Errors instead of panicking when a render path forgot to provide the state.
+fn app_state() -> Result<AppState, leptos::prelude::ServerFnError> {
+    leptos::prelude::use_context::<AppState>().ok_or_else(|| {
+        tracing::error!("AppState missing from Leptos context");
+        leptos::prelude::ServerFnError::new(crate::i18n::t::GENERIC_ERROR)
+    })
+}
+
 pub async fn require_user() -> Result<RequestCtx, leptos::prelude::ServerFnError> {
     use leptos::prelude::*;
     let user = session_user()
         .await?
         .ok_or_else(|| ServerFnError::new(crate::i18n::t::ERR_NOT_LOGGED_IN))?;
-    let state = expect_context::<AppState>();
+    let state = app_state()?;
     let headers: HeaderMap = leptos_axum::extract().await?;
     let peer = leptos_axum::extract::<ConnectInfo<SocketAddr>>()
         .await

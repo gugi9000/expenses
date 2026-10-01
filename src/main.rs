@@ -85,7 +85,16 @@ async fn main() -> anyhow::Result<()> {
                 move || shell(options.clone())
             },
         )
-        .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
+        .fallback(leptos_axum::file_and_error_handler_with_context::<
+            AppState,
+            _,
+        >(
+            {
+                let state = state.clone();
+                move || provide_context(state.clone())
+            },
+            shell,
+        ))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             security::require_same_origin,

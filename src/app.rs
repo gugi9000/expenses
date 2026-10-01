@@ -8,8 +8,8 @@ use leptos_router::{
 
 use crate::{
     admin_pages::{
-        AdminExpensePage, AdminExpensesPage, AdminLayout, AdminLogPage, AdminSheetPage, AdminSheetsPage,
-        AdminUsersPage,
+        AdminExpensePage, AdminExpensesPage, AdminLayout, AdminLogPage, AdminSheetPage,
+        AdminSheetsPage, AdminUsersPage,
     },
     i18n::t,
     model::SessionUser,
@@ -24,9 +24,7 @@ pub async fn get_session_user() -> Result<Option<SessionUser>, ServerFnError> {
 
 #[server]
 pub async fn entra_enabled() -> Result<bool, ServerFnError> {
-    Ok(expect_context::<crate::server::state::AppState>()
-        .entra
-        .is_some())
+    Ok(use_context::<crate::server::state::AppState>().is_some_and(|s| s.entra.is_some()))
 }
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
@@ -37,6 +35,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
                 <meta name="theme-color" content="#1f4e79" />
+                <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
                 <AutoReload options=options.clone() />
                 <HydrationScripts options />
                 <MetaTags />
