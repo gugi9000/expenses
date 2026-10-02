@@ -10,7 +10,7 @@ async fn main() -> anyhow::Result<()> {
         http::{HeaderValue, Request, header},
         middleware,
         response::{IntoResponse, Response},
-        routing::post,
+        routing::{get, post},
     };
     use expenses::{
         app::{App, shell},
@@ -84,6 +84,13 @@ async fn main() -> anyhow::Result<()> {
         res
     }
 
+    async fn build_id() -> impl IntoResponse {
+        (
+            [(header::CACHE_CONTROL, "no-store")],
+            expenses::app::BUILD_ID,
+        )
+    }
+
     let routes = generate_route_list(App);
     // Leptos' fallback file handler ignores If-Modified-Since, so serve the bundle with ServeDir to get 304s.
     let pkg_dir = std::path::Path::new(&*state.leptos_options.site_root)
@@ -91,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .nest_service("/pkg", tower_http::services::ServeDir::new(pkg_dir))
         .route("/api/{*fn_name}", post(server_fn_handler))
+        .route("/version", get(build_id))
         .merge(auth::routes())
         .merge(expense_routes())
         .merge(sheet_routes())

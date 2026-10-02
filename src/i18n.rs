@@ -4,6 +4,9 @@ use chrono::{DateTime, Datelike, Days, Duration, NaiveDate, NaiveDateTime, Utc};
 
 pub mod t {
     pub const APP_NAME: &str = "Udgifter";
+    pub const FOOTER_BRAND: &str = "Fair IT Expenses";
+    pub const UPDATE_AVAILABLE: &str = "Der er en ny version af appen.";
+    pub const UPDATE_RELOAD: &str = "Genindlæs";
     pub const NOT_FOUND: &str = "Siden blev ikke fundet.";
     pub const LOADING: &str = "Indlæser …";
     pub const GENERIC_ERROR: &str = "Der opstod en fejl. Prøv igen.";

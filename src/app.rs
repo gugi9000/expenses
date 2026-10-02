@@ -1,4 +1,6 @@
-use leptos::prelude::*;
+use std::time::Duration;
+
+use leptos::{prelude::*, task::spawn_local};
 use leptos_meta::{MetaTags, Stylesheet, Title, provide_meta_context};
 use leptos_router::{
     ParamSegment, StaticSegment,
@@ -16,6 +18,9 @@ use crate::{
     pages::{ExpenseDetailPage, ExpenseListPage},
     sheet_pages::{NewSheetPage, SheetDetailPage, SheetListPage},
 };
+
+/// Identifies the exact build; differs between server and client after a deploy.
+pub const BUILD_ID: &str = env!("BUILD_ID");
 
 #[server]
 pub async fn get_session_user() -> Result<Option<SessionUser>, ServerFnError> {
@@ -36,6 +41,10 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
                 <meta name="theme-color" content="#1f4e79" />
                 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+                <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+                <link rel="manifest" href="/manifest.webmanifest" />
+                <meta name="apple-mobile-web-app-title" content=t::APP_NAME />
+                <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
                 <AutoReload options=options.clone() />
                 <HydrationScripts options />
                 <MetaTags />
@@ -74,7 +83,69 @@ pub fn App() -> impl IntoView {
                 </ParentRoute>
             </Routes>
         </Router>
+        <UpdateBanner />
+        <footer class="app-footer">{t::FOOTER_BRAND}" · v"{env!("CARGO_PKG_VERSION")}</footer>
     }
+}
+
+#[component]
+fn UpdateBanner() -> impl IntoView {
+    let outdated = RwSignal::new(false);
+    // Effects only run in the browser.
+    Effect::new(move |_| watch_build_id(outdated));
+
+    view! {
+        <Show when=move || outdated.get()>
+            <div class="update-banner" role="status">
+                <span>{t::UPDATE_AVAILABLE}</span>
+                <button class="button" type="button" on:click=|_| { let _ = window().location().reload(); }>
+                    {t::UPDATE_RELOAD}
+                </button>
+            </div>
+        </Show>
+    }
+}
+
+fn watch_build_id(outdated: RwSignal<bool>) {
+    use wasm_bindgen::{JsCast, closure::Closure};
+
+    let check = move || {
+        spawn_local(async move {
+            if fetch_build_id().await.is_some_and(|id| id != BUILD_ID) {
+                outdated.set(true);
+            }
+        });
+    };
+    check();
+    let on_visible = Closure::<dyn Fn()>::new(move || {
+        if document().visibility_state() == web_sys::VisibilityState::Visible {
+            check();
+        }
+    });
+    let _ = document()
+        .add_event_listener_with_callback("visibilitychange", on_visible.as_ref().unchecked_ref());
+    on_visible.forget();
+    set_interval(check, Duration::from_secs(300));
+}
+
+async fn fetch_build_id() -> Option<String> {
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen_futures::JsFuture;
+
+    let init = web_sys::RequestInit::new();
+    init.set_cache(web_sys::RequestCache::NoStore);
+    let res: web_sys::Response =
+        JsFuture::from(window().fetch_with_str_and_init("/version", &init))
+            .await
+            .ok()?
+            .dyn_into()
+            .ok()?;
+    if !res.ok() {
+        return None;
+    }
+    let text = JsFuture::from(res.text().ok()?).await.ok()?.as_string()?;
+    let id = text.trim();
+    (!id.is_empty()).then(|| id.to_owned())
 }
 
 fn login_error_text(code: &str) -> &'static str {
