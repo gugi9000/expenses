@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 
 use super::config::Config;
-use crate::model::{Role, SessionUser};
+use crate::model::{Role, SessionUser, Theme};
 
 pub const COOKIE_NAME: &str = "udgifter_session";
 
@@ -40,8 +40,8 @@ pub async fn create(pool: &SqlitePool, user_id: i64, hours: i64) -> sqlx::Result
 }
 
 pub async fn lookup(pool: &SqlitePool, token: &str) -> sqlx::Result<Option<SessionUser>> {
-    let row: Option<(i64, String, String)> = sqlx::query_as(
-        "SELECT u.id, u.display_name, u.role
+    let row: Option<(i64, String, String, String)> = sqlx::query_as(
+        "SELECT u.id, u.display_name, u.role, u.theme
          FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = ?
            AND s.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -51,13 +51,23 @@ pub async fn lookup(pool: &SqlitePool, token: &str) -> sqlx::Result<Option<Sessi
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.and_then(|(id, display_name, role)| {
+    Ok(row.and_then(|(id, display_name, role, theme)| {
         Some(SessionUser {
             id,
             display_name,
             role: Role::parse(&role)?,
+            theme: Theme::parse(&theme).unwrap_or_default(),
         })
     }))
+}
+
+pub async fn set_theme(pool: &SqlitePool, user_id: i64, theme: Theme) -> sqlx::Result<()> {
+    sqlx::query("UPDATE users SET theme = ? WHERE id = ?")
+        .bind(theme.as_str())
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 pub async fn delete(pool: &SqlitePool, token: &str) -> sqlx::Result<()> {

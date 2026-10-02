@@ -620,6 +620,7 @@ mod tests {
             id,
             display_name: name.into(),
             role: Role::User,
+            theme: Default::default(),
         }
     }
 

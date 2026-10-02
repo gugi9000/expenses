@@ -5,7 +5,7 @@ use leptos::prelude::*;
 
 use crate::model::{
     AdminUser, AuditEntry, Category, ExpenseDetail, ExpenseListItem, SheetDefaults, SheetDetail,
-    SheetSummary,
+    SheetSummary, Theme,
 };
 #[cfg(feature = "ssr")]
 use crate::server::{
@@ -33,6 +33,14 @@ pub fn error_text(e: &ServerFnError) -> String {
         ServerFnError::ServerError(msg) => msg.clone(),
         _ => crate::i18n::t::GENERIC_ERROR.to_string(),
     }
+}
+
+#[server]
+pub async fn set_theme(theme: Theme) -> Result<(), ServerFnError> {
+    let ctx = require_user().await?;
+    crate::server::session::set_theme(&ctx.state.pool, ctx.user.id, theme)
+        .await
+        .map_err(internal)
 }
 
 #[server]

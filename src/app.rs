@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use leptos::{prelude::*, task::spawn_local};
-use leptos_meta::{MetaTags, Stylesheet, Title, provide_meta_context};
+use leptos_meta::{Html, MetaTags, Stylesheet, Title, provide_meta_context};
 use leptos_router::{
     ParamSegment, StaticSegment,
     components::{A, Outlet, ParentRoute, Redirect, Route, Router, Routes},
@@ -14,7 +14,7 @@ use crate::{
         AdminSheetsPage, AdminUsersPage,
     },
     i18n::t,
-    model::SessionUser,
+    model::{SessionUser, Theme},
     pages::{ExpenseDetailPage, ExpenseListPage},
     sheet_pages::{NewSheetPage, SheetDetailPage, SheetListPage},
 };
@@ -212,8 +212,10 @@ fn AuthedLayout() -> impl IntoView {
                 match user.await {
                     Ok(Some(user)) => {
                         provide_context(user.clone());
+                        let theme = RwSignal::new(user.theme);
                         view! {
-                            <Header user />
+                            <Html {..} data-theme=move || theme.get().as_str() />
+                            <Header user theme />
                             <main class="content">
                                 <Outlet />
                             </main>
@@ -229,7 +231,7 @@ fn AuthedLayout() -> impl IntoView {
 }
 
 #[component]
-fn Header(user: SessionUser) -> impl IntoView {
+fn Header(user: SessionUser, theme: RwSignal<Theme>) -> impl IntoView {
     let is_admin = user.is_admin();
     view! {
         <header class="topbar">
@@ -246,9 +248,37 @@ fn Header(user: SessionUser) -> impl IntoView {
                 <strong>{user.display_name}</strong>
             </span>
             {is_admin.then(|| view! { <span class="badge">{t::ROLE_ADMIN}</span> })}
+            <ThemePicker theme />
             <form method="post" action="/auth/logout">
                 <button class="link" type="submit">{t::LOGOUT}</button>
             </form>
         </div>
+    }
+}
+
+#[component]
+fn ThemePicker(theme: RwSignal<Theme>) -> impl IntoView {
+    let on_change = move |ev| {
+        let Some(new) = Theme::parse(&event_target_value(&ev)) else {
+            return;
+        };
+        theme.set(new);
+        spawn_local(async move {
+            let _ = crate::api::set_theme(new).await;
+        });
+    };
+    let option = move |value: Theme, label: &'static str| {
+        view! { <option value=value.as_str() selected=move || theme.get() == value>{label}</option> }
+    };
+
+    view! {
+        <label class="theme-picker">
+            <span class="visually-hidden">{t::THEME}</span>
+            <select prop:value=move || theme.get().as_str() on:change=on_change>
+                {option(Theme::System, t::THEME_SYSTEM)}
+                {option(Theme::Light, t::THEME_LIGHT)}
+                {option(Theme::Dark, t::THEME_DARK)}
+            </select>
+        </label>
     }
 }

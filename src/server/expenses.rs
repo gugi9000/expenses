@@ -925,6 +925,7 @@ mod tests {
             id,
             display_name: name.into(),
             role: crate::model::Role::User,
+            theme: Default::default(),
         }
     }
 
