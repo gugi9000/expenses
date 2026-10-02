@@ -163,6 +163,23 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .button:focus
 
 .upload { margin-bottom: 1rem; }
 .upload-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: .6rem;
+  margin: .75rem 0 0;
+  font-weight: 500;
+  cursor: pointer;
+}
+.toggle input[type="checkbox"] {
+  flex: none;
+  width: 1.3rem;
+  height: 1.3rem;
+  margin: .1rem 0 0;
+  accent-color: var(--brand);
+}
+.page-wrap { display: grid; gap: .25rem; }
+.original-link { justify-self: end; color: var(--brand); }
 .upload-buttons .button { position: relative; }
 .button.disabled { opacity: .6; pointer-events: none; }
 .button.danger { border-color: var(--danger); color: var(--danger); }

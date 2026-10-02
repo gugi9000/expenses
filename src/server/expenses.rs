@@ -13,7 +13,7 @@ use serde_json::json;
 use sqlx::{FromRow, SqlitePool};
 
 use super::{
-    audit,
+    audit, autocrop,
     auth::{AppError, CurrentUser},
     fx,
     security::client_ip,
@@ -46,6 +46,7 @@ pub fn routes() -> Router<AppState> {
             post(upload).layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES)),
         )
         .route("/filer/{id}", get(serve_file))
+        .route("/filer/{id}/original", get(serve_original))
 }
 
 /// A user-facing validation error; the message is shown as-is.
@@ -77,6 +78,26 @@ struct IncomingFile {
     bytes: Vec<u8>,
     mime: &'static str,
     name: Option<String>,
+    /// The upload as received, when `bytes` holds an auto-cropped version.
+    original: Option<Vec<u8>>,
+}
+
+async fn crop_images(files: Vec<IncomingFile>) -> anyhow::Result<Vec<IncomingFile>> {
+    Ok(tokio::task::spawn_blocking(move || {
+        files
+            .into_iter()
+            .map(|mut f| {
+                if matches!(f.mime, "image/jpeg" | "image/png" | "image/webp")
+                    && let Some(cropped) = autocrop::auto_crop(&f.bytes, f.mime)
+                {
+                    f.original = Some(std::mem::replace(&mut f.bytes, cropped));
+                    f.mime = "image/jpeg";
+                }
+                f
+            })
+            .collect()
+    })
+    .await?)
 }
 
 async fn upload(
@@ -89,6 +110,7 @@ async fn upload(
     let ip = client_ip(&headers, Some(peer), state.config.trust_proxy);
     let mut files = Vec::new();
     let mut expense_id: Option<i64> = None;
+    let mut autocrop = false;
 
     loop {
         let field = match multipart.next_field().await {
@@ -106,6 +128,9 @@ async fn upload(
                     Ok(id) => id,
                     Err(_) => return Ok(bad_request(t::UPLOAD_FAILED)),
                 });
+            }
+            Some("autocrop") => {
+                autocrop = field.text().await.is_ok_and(|v| v.trim() == "1");
             }
             Some("files") => {
                 if files.len() >= MAX_FILES {
@@ -131,6 +156,7 @@ async fn upload(
                     bytes: bytes.to_vec(),
                     mime,
                     name,
+                    original: None,
                 });
             }
             _ => {}
@@ -138,6 +164,9 @@ async fn upload(
     }
     if files.is_empty() {
         return Ok(bad_request(t::ERR_NO_FILES));
+    }
+    if autocrop {
+        files = crop_images(files).await?;
     }
 
     match store_upload(&state, &user, files, expense_id, ip.as_deref()).await {
@@ -165,7 +194,11 @@ async fn store_upload(
 
     let mut stored = Vec::with_capacity(files.len());
     for f in &files {
-        stored.push(state.files.put(&f.bytes).await?);
+        let original = match &f.original {
+            Some(o) => Some(state.files.put(o).await?),
+            None => None,
+        };
+        stored.push((state.files.put(&f.bytes).await?, original));
     }
 
     let mut suggestion = None;
@@ -212,10 +245,10 @@ async fn store_upload(
     .bind(id)
     .fetch_one(&mut *tx)
     .await?;
-    for (f, sha) in files.iter().zip(&stored) {
+    for (f, (sha, original_sha)) in files.iter().zip(&stored) {
         let att_id: i64 = sqlx::query_scalar(
-            "INSERT INTO attachments (expense_id, sha256, mime, size_bytes, original_name, page_order)
-             VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+            "INSERT INTO attachments (expense_id, sha256, mime, size_bytes, original_name, page_order, original_sha256)
+             VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
         )
         .bind(id)
         .bind(sha)
@@ -223,6 +256,7 @@ async fn store_upload(
         .bind(f.bytes.len() as i64)
         .bind(&f.name)
         .bind(order)
+        .bind(original_sha)
         .fetch_one(&mut *tx)
         .await?;
         order += 1;
@@ -231,7 +265,14 @@ async fn store_upload(
             Some(user.id),
             "attachment_added",
             Some(("expense", &id.to_string())),
-            Some(json!({"attachment_id": att_id, "sha256": sha, "mime": f.mime, "size": f.bytes.len()})),
+            Some(json!({
+                "attachment_id": att_id,
+                "sha256": sha,
+                "mime": f.mime,
+                "size": f.bytes.len(),
+                "auto_cropped": original_sha.is_some(),
+                "original_sha256": original_sha,
+            })),
             ip,
         )
         .await?;
@@ -251,9 +292,26 @@ async fn serve_file(
     CurrentUser(user): CurrentUser,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
+    serve_attachment(&state, &user, id, false).await
+}
+
+async fn serve_original(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    serve_attachment(&state, &user, id, true).await
+}
+
+async fn serve_attachment(
+    state: &AppState,
+    user: &SessionUser,
+    id: i64,
+    original: bool,
+) -> Result<Response, AppError> {
     // Admins may view everyone's files (read-only god view).
-    let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT a.sha256, a.mime FROM attachments a JOIN expenses e ON e.id = a.expense_id
+    let row: Option<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT a.sha256, a.mime, a.original_sha256 FROM attachments a JOIN expenses e ON e.id = a.expense_id
          WHERE a.id = ? AND (e.owner_id = ? OR ?)",
     )
     .bind(id)
@@ -261,10 +319,17 @@ async fn serve_file(
     .bind(user.is_admin())
     .fetch_optional(&state.pool)
     .await?;
-    let Some((sha, mime)) = row else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+    let (sha, mime) = match (row, original) {
+        (Some((sha, mime, _)), false) => (sha, mime),
+        (Some((_, _, Some(orig))), true) => (orig, String::new()),
+        _ => return Ok(StatusCode::NOT_FOUND.into_response()),
     };
     let bytes = state.files.get(&sha).await?;
+    let mime = if mime.is_empty() {
+        infer::get(&bytes).map_or("application/octet-stream", |k| k.mime_type()).to_string()
+    } else {
+        mime
+    };
     let mut res = Response::new(Body::from(bytes));
     let h = res.headers_mut();
     h.insert(header::CONTENT_TYPE, HeaderValue::from_str(&mime)?);
@@ -400,6 +465,7 @@ async fn list_scoped(
                     id,
                     mime,
                     original_name: None,
+                    cropped: false,
                 }),
             attachment_count: r.attachment_count,
         })
@@ -458,16 +524,20 @@ async fn detail_scoped(
         return Ok(None);
     };
 
-    let attachments: Vec<(i64, String, Option<String>)> = sqlx::query_as(
-        "SELECT id, mime, original_name FROM attachments WHERE expense_id = ? ORDER BY page_order, id",
+    let attachments: Vec<(i64, String, Option<String>, bool)> = sqlx::query_as(
+        "SELECT id, mime, original_name, original_sha256 IS NOT NULL FROM attachments
+         WHERE expense_id = ? ORDER BY page_order, id",
     )
     .bind(id)
     .fetch_all(pool)
     .await?;
 
+    // Compare uploads as received, so a cropped and an uncropped copy of one photo still match.
     let duplicates_of: Vec<i64> = sqlx::query_scalar(
         "SELECT DISTINCT e2.id FROM attachments a1
-         JOIN attachments a2 ON a2.sha256 = a1.sha256 AND a2.expense_id <> a1.expense_id
+         JOIN attachments a2
+           ON COALESCE(a2.original_sha256, a2.sha256) = COALESCE(a1.original_sha256, a1.sha256)
+          AND a2.expense_id <> a1.expense_id
          JOIN expenses e2 ON e2.id = a2.expense_id
          WHERE a1.expense_id = ? AND e2.owner_id = ? AND e2.deleted_at IS NULL
          ORDER BY e2.id",
@@ -494,10 +564,11 @@ async fn detail_scoped(
         amount_base_minor: r.amount_base_minor,
         attachments: attachments
             .into_iter()
-            .map(|(id, mime, original_name)| AttachmentRef {
+            .map(|(id, mime, original_name, cropped)| AttachmentRef {
                 id,
                 mime,
                 original_name,
+                cropped,
             })
             .collect(),
         duplicates_of,
@@ -1031,6 +1102,36 @@ mod tests {
         assert!(detail(&pool, bob.id, b).await.unwrap().is_none());
         assert!(detail(&pool, bob.id, a).await.unwrap().is_none());
         assert!(list(&pool, alice.id, None, None).await.unwrap().iter().all(|e| !e.deleted));
+    }
+
+    #[tokio::test]
+    async fn crops_photos_but_never_pdfs() {
+        use image::{DynamicImage, ImageFormat, Rgb, RgbImage};
+        use imageproc::{drawing::draw_polygon_mut, point::Point};
+
+        let mut img = RgbImage::from_pixel(900, 700, Rgb([50, 50, 50]));
+        let corners = [Point::new(200, 100), Point::new(650, 130), Point::new(620, 620), Point::new(180, 600)];
+        draw_polygon_mut(&mut img, &corners, Rgb([240, 240, 240]));
+        let mut png = Vec::new();
+        DynamicImage::ImageRgb8(img)
+            .write_to(&mut std::io::Cursor::new(&mut png), ImageFormat::Png)
+            .unwrap();
+        let pdf = b"%PDF-1.7 not really".to_vec();
+        let file = |bytes: Vec<u8>, mime| IncomingFile { bytes, mime, name: None, original: None };
+
+        let out = crop_images(vec![
+            file(png.clone(), "image/png"),
+            file(pdf.clone(), "application/pdf"),
+            file(vec![0; 64], "image/heic"),
+        ])
+        .await
+        .unwrap();
+
+        assert_eq!(out[0].mime, "image/jpeg");
+        assert_eq!(out[0].original.as_deref(), Some(png.as_slice()));
+        assert!(out[0].bytes.starts_with(&[0xFF, 0xD8]), "cropped result is a JPEG");
+        assert_eq!((out[1].mime, out[1].bytes.as_slice(), out[1].original.is_none()), ("application/pdf", pdf.as_slice(), true));
+        assert_eq!((out[2].mime, out[2].original.is_none()), ("image/heic", true));
     }
 
     #[tokio::test]

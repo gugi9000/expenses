@@ -44,6 +44,7 @@ pub fn UploadButtons(
 ) -> impl IntoView {
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
+    let autocrop = RwSignal::new(true);
 
     let on_change = move |ev: leptos::ev::Event| {
         let input: web_sys::HtmlInputElement = event_target(&ev);
@@ -55,8 +56,9 @@ pub fn UploadButtons(
         }
         busy.set(true);
         error.set(None);
+        let crop = autocrop.get_untracked();
         spawn_local(async move {
-            let result = crate::upload::upload(files, expense_id).await;
+            let result = crate::upload::upload(files, expense_id, crop).await;
             busy.set(false);
             match result {
                 Ok(id) => on_done.run(id),
@@ -96,6 +98,17 @@ pub fn UploadButtons(
                     />
                 </label>
             </div>
+            <label class="toggle">
+                <input
+                    type="checkbox"
+                    prop:checked=move || autocrop.get()
+                    on:change=move |ev| autocrop.set(event_target_checked(&ev))
+                />
+                <span>
+                    {t::AUTO_CROP}
+                    <span class="hint">{t::AUTO_CROP_HINT}</span>
+                </span>
+            </label>
             <Show when=move || busy.get()>
                 <p class="muted" role="status">{t::UPLOADING}</p>
             </Show>
@@ -341,10 +354,20 @@ pub fn attachment_view(a: AttachmentRef) -> impl IntoView {
     let url = a.url();
     if a.is_image() {
         let href = url.clone();
+        let original = a.cropped.then(|| {
+            view! {
+                <a class="original-link small" href=a.original_url() target="_blank" rel="noopener external">
+                    {t::SHOW_ORIGINAL}
+                </a>
+            }
+        });
         view! {
-            <a class="page" href=href target="_blank" rel="noopener external">
-                <img src=url alt="" />
-            </a>
+            <div class="page-wrap">
+                <a class="page" href=href target="_blank" rel="noopener external">
+                    <img src=url alt="" />
+                </a>
+                {original}
+            </div>
         }
         .into_any()
     } else {

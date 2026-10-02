@@ -52,6 +52,10 @@ pub mod t {
     pub const TAKE_PHOTO: &str = "Tag billede";
     pub const CHOOSE_FILE: &str = "Vælg fil";
     pub const ADD_PAGE: &str = "Tilføj side";
+    pub const AUTO_CROP: &str = "Beskær automatisk";
+    pub const AUTO_CROP_HINT: &str =
+        "Finder papirets kanter, retter det op og skærer baggrunden fra. Gælder ikke PDF.";
+    pub const SHOW_ORIGINAL: &str = "Vis original";
     pub const UPLOADING: &str = "Uploader …";
     pub const UPLOAD_FAILED: &str = "Upload mislykkedes. Prøv igen.";
     pub const FILTER_ALL: &str = "Alle";

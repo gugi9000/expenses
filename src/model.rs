@@ -190,11 +190,17 @@ pub struct AttachmentRef {
     pub id: i64,
     pub mime: String,
     pub original_name: Option<String>,
+    /// Auto-cropped on upload; the uncropped photo is at `original_url()`.
+    pub cropped: bool,
 }
 
 impl AttachmentRef {
     pub fn url(&self) -> String {
         format!("/filer/{}", self.id)
+    }
+
+    pub fn original_url(&self) -> String {
+        format!("/filer/{}/original", self.id)
     }
 
     pub fn is_image(&self) -> bool {

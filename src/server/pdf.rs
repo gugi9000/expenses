@@ -510,7 +510,7 @@ fn jpeg_frame(b: &[u8]) -> Option<(u32, u32, u8)> {
     None
 }
 
-fn jpeg_orientation(bytes: &[u8]) -> Orientation {
+pub(crate) fn jpeg_orientation(bytes: &[u8]) -> Orientation {
     JpegDecoder::new(Cursor::new(bytes))
         .and_then(|mut d| d.orientation())
         .unwrap_or(Orientation::NoTransforms)

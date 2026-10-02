@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod audit;
 pub mod auth;
+pub mod autocrop;
 pub mod config;
 pub mod db;
 pub mod entra;

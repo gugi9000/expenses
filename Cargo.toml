@@ -78,6 +78,7 @@ dotenvy = { version = "0.15", optional = true }
 anyhow = { version = "1", optional = true }
 infer = { version = "0.19", optional = true }
 tower-http = { version = "0.6", features = ["fs"], optional = true }
+imageproc = { version = "0.27", default-features = false, optional = true }
 reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
 ], optional = true }
@@ -115,12 +116,21 @@ ssr = [
     "dep:anyhow",
     "dep:infer",
     "dep:tower-http",
+    "dep:imageproc",
     "dep:reqwest",
     "dep:tracing",
     "dep:tracing-subscriber",
     "dep:lopdf",
     "dep:image",
 ]
+
+# Image decoding/encoding and edge detection are unusably slow unoptimised, even in dev.
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.imageproc]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
+opt-level = 3
 
 [profile.wasm-release]
 inherits = "release"

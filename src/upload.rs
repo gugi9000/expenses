@@ -2,7 +2,10 @@
 
 use wasm_bindgen::{JsCast, JsValue, prelude::Closure};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Blob, CanvasRenderingContext2d, File, FormData, HtmlCanvasElement, ImageBitmap, RequestInit, Response};
+use web_sys::{
+    Blob, CanvasRenderingContext2d, File, FormData, HtmlCanvasElement, ImageBitmap, RequestInit,
+    Response,
+};
 
 use crate::{i18n::t, model::UploadResponse};
 
@@ -21,7 +24,10 @@ fn jpeg_name(name: &str) -> String {
 
 /// Re-encodes large JPEG/PNG/WebP photos as a smaller JPEG; `None` means upload the original.
 async fn shrink_image(file: &File) -> Option<Blob> {
-    if !matches!(file.type_().as_str(), "image/jpeg" | "image/png" | "image/webp") {
+    if !matches!(
+        file.type_().as_str(),
+        "image/jpeg" | "image/png" | "image/webp"
+    ) {
         return None;
     }
     let window = web_sys::window()?;
@@ -38,14 +44,20 @@ async fn shrink_image(file: &File) -> Option<Blob> {
     }
     let (nw, nh) = ((w * scale).round(), (h * scale).round());
 
-    let canvas: HtmlCanvasElement = window.document()?.create_element("canvas").ok()?.dyn_into().ok()?;
+    let canvas: HtmlCanvasElement = window
+        .document()?
+        .create_element("canvas")
+        .ok()?
+        .dyn_into()
+        .ok()?;
     canvas.set_width(nw as u32);
     canvas.set_height(nh as u32);
     let ctx: CanvasRenderingContext2d = canvas.get_context("2d").ok()??.dyn_into().ok()?;
     // JPEG has no alpha channel; paint transparent PNG areas white instead of black.
     ctx.set_fill_style_str("#fff");
     ctx.fill_rect(0.0, 0.0, nw, nh);
-    ctx.draw_image_with_image_bitmap_and_dw_and_dh(&bitmap, 0.0, 0.0, nw, nh).ok()?;
+    ctx.draw_image_with_image_bitmap_and_dw_and_dh(&bitmap, 0.0, 0.0, nw, nh)
+        .ok()?;
     bitmap.close();
 
     let promise = js_sys::Promise::new(&mut |resolve, _reject| {
@@ -62,14 +74,23 @@ async fn shrink_image(file: &File) -> Option<Blob> {
 }
 
 /// Uploads files as a new voucher, or as extra pages when `expense_id` is given. Returns the voucher id.
-pub async fn upload(files: Vec<File>, expense_id: Option<i64>) -> Result<i64, String> {
+pub async fn upload(
+    files: Vec<File>,
+    expense_id: Option<i64>,
+    autocrop: bool,
+) -> Result<i64, String> {
     let form = FormData::new().map_err(failed)?;
     if let Some(id) = expense_id {
-        form.append_with_str("expense_id", &id.to_string()).map_err(failed)?;
+        form.append_with_str("expense_id", &id.to_string())
+            .map_err(failed)?;
     }
+    form.append_with_str("autocrop", if autocrop { "1" } else { "0" })
+        .map_err(failed)?;
     for file in &files {
         match shrink_image(file).await {
-            Some(blob) => form.append_with_blob_and_filename("files", &blob, &jpeg_name(&file.name())),
+            Some(blob) => {
+                form.append_with_blob_and_filename("files", &blob, &jpeg_name(&file.name()))
+            }
             None => form.append_with_blob_and_filename("files", file, &file.name()),
         }
         .map_err(failed)?;
