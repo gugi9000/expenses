@@ -81,7 +81,7 @@ LEPTOS_ENV=PROD
 
 - `BASE_URL` must be exactly the origin users see in the browser (scheme + host, no trailing slash). Requests that change data are rejected when their `Origin` header doesn't match it.
 - Only set `TRUST_PROXY=true` behind a reverse proxy. The audit log then records the client IP from `X-Forwarded-For` instead of the proxy's address.
-- `LEPTOS_SITE_ROOT` is resolved from the working directory, so run the service from the install folder.
+- `LEPTOS_SITE_ROOT` is resolved from the working directory, so run the service from the install folder. The server refuses to start if it can't find `site/pkg/expenses.{css,js,wasm}`, and logs the path it looked in.
 - Don't put comments on the same line as a value: systemd's `EnvironmentFile` would treat them as part of the value.
 - The file contains the client secret: make it readable only by the service account.
 
@@ -213,6 +213,8 @@ robocopy C:\Udgifter\data\files D:\Backup\Udgifter\files /E
 Don't back up the live `expenses.db` by copying the file while the service is running, because the copy can be inconsistent. Files are write-once (named by their SHA-256 hash), so incremental copies are safe.
 
 ### 7. Updating
+
+On Linux, when building on the server itself, run `./deploy.sh` from the repository. It builds the release, and if the binaries or `site/` differ from what is installed in `/opt/udgifter`, it stops the service, copies them, starts it again and prints the new `/version`. Override `DEST`, `SERVICE` or `ADDR` as environment variables if your setup differs. Manually:
 
 1. Build as in step 1.
 2. Stop the service (`systemctl stop udgifter` / `nssm stop Udgifter`).

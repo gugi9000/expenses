@@ -95,6 +95,18 @@ async fn main() -> anyhow::Result<()> {
     // Leptos' fallback file handler ignores If-Modified-Since, so serve the bundle with ServeDir to get 304s.
     let pkg_dir = std::path::Path::new(&*state.leptos_options.site_root)
         .join(&*state.leptos_options.site_pkg_dir);
+    let output_name = &*state.leptos_options.output_name;
+    for ext in ["css", "js", "wasm"] {
+        let file = pkg_dir.join(format!("{output_name}.{ext}"));
+        if !file.is_file() {
+            let cwd = std::env::current_dir().unwrap_or_default();
+            anyhow::bail!(
+                "{} not found (working dir {}); check LEPTOS_OUTPUT_NAME, LEPTOS_SITE_ROOT and LEPTOS_SITE_PKG_DIR",
+                file.display(),
+                cwd.display()
+            );
+        }
+    }
     let app = Router::new()
         .nest_service("/pkg", tower_http::services::ServeDir::new(pkg_dir))
         .route("/api/{*fn_name}", post(server_fn_handler))
